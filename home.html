@@ -1,7 +1,7 @@
 <body onload="init()">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <div>TEST SMART COACH</div>
-<button type="button" onclick="write()">ChangeCamera</button>
+<button type="button" onclick="selectCamera()">ChangeCamera</button>
 <div><canvas id="canvas"></canvas></div>
 <div id="label-container"></div>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -15,6 +15,7 @@
     let model, webcam, ctx, labelContainer, maxPredictions;
 
     async function init() {
+        console.log ("hello world!");
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
@@ -94,10 +95,6 @@
 
         // finally draw the poses
         drawPose(pose);
-    }
-    
-    function write(){
-        console.log("Hello World");
     }
     
     async function selectCamera(){
