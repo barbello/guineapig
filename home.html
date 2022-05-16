@@ -1,0 +1,497 @@
+<body onload="init()">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<div>TEST SMART COACH</div>
+<button type="button" onclick="selectCamera()">ChangeCamera</button>
+<div><canvas id="canvas"></canvas></div>
+<div id="label-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+<script type="text/javascript">
+    // More API functions here:
+    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/pose
+
+    // the link to your model provided by Teachable Machine export panel
+    const URL = "https://teachablemachine.withgoogle.com/models/Yt9z-N2ya/";
+    let model, webcam, ctx, labelContainer, maxPredictions;
+
+    async function init() {
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+
+        // load the model and metadata
+        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
+        // Note: the pose library adds a tmPose object to your window (window.tmPose)
+        model = await tmPose.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+
+        // Convenience function to setup a webcam
+        const sizew = window.innerWidth;
+        const sizeh = window.innerHeight;
+        const flip = true; // whether to flip the webcam
+        webcam = new tmPose.Webcam(sizeh, sizeh, flip); // width, height, flip
+        await webcam.setup({ facingMode: "user" }); // request access to the webcam
+        await webcam.play();
+        window.requestAnimationFrame(loop);
+
+        // append/get elements to the DOM
+        const canvas = document.getElementById("canvas");
+        canvas.width = sizew; canvas.height = sizeh;
+        ctx = canvas.getContext("2d");
+        labelContainer = document.getElementById("label-container");
+        for (let i = 0; i < maxPredictions; i++) { // and class labels
+            labelContainer.appendChild(document.createElement("div"));
+        }
+
+        colorArm = "#FFE03A"
+        colorLeg = "#FFE03A"
+        colorBody = "#FFE03A"
+        colorShoulder = "#FFE03A"
+        colorHead = "#FFE03A"
+
+        maxRadius = 10; //modified
+        minRadius = 10;
+        radius = 10;
+        change = 1;
+
+        i_camera = 0;
+
+    }
+
+    async function loop(timestamp) {
+        webcam.update(); // update the webcam frame
+        await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+        // Prediction #1: run input through posenet
+        // estimatePose can take in an image, video or canvas html element
+        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+        // Prediction 2: run input through teachable machine classification model
+        const prediction = await model.predict(posenetOutput);
+
+        for (let i = 0; i < maxPredictions; i++) {
+            const classPrediction =
+                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+            //labelContainer.childNodes[i].innerHTML = classPrediction;
+        }
+
+
+        //CHANGE THE COLOR HERE BASED ON CLASSIFICATION
+        if (prediction[0].probability.toFixed(2) >= 0.75){
+            colorShoulder= "#57FF79"; //green
+            colorHead= "#57FF79" //green
+            radius = 10;
+        }
+        if (prediction[1].probability.toFixed(2) >= 0.75){
+            colorShoulder = "#FFE03A"; //yellow tilt rx
+            radius = 10;
+        }
+        if (prediction[2].probability.toFixed(2) >= 0.75){
+            colorShoulder = "#FF7F57"; //red tilt sx
+            radius = 10;
+        }
+
+        // finally draw the poses
+        drawPose(pose);
+    }
+
+    async function selectCamera(){
+        const sizew = window.innerWidth;
+        const sizeh = window.innerHeight;
+
+        await webcam.stop()
+        if (i_camera == 0){
+            const flip = false; // whether to flip the webcam
+            webcam = new tmPose.Webcam(sizeh, sizeh, flip); // width, height, flip
+            await webcam.setup({ facingMode: "environment" }); // request access to the webcam
+            i_camera = 1;
+        }
+        else{
+            const flip = true; // whether to flip the webcam
+            webcam = new tmPose.Webcam(sizeh, sizeh, flip); // width, height, flip
+            await webcam.setup({facingMode: "user"}); // request access to the webcam
+            i_camera = 0;
+        }
+        await webcam.play();
+        window.requestAnimationFrame(loop);
+    }
+
+    function simplePoint(x, y, canvas){
+      canvas.beginPath();
+      canvas.arc(x, y, 5, 0, 2 * Math.PI, true);
+      canvas.fillStyle = "white";
+      canvas.fill();
+    }
+
+    function complexPoint(x, y, color, canvas, radius){
+      canvas.beginPath();
+      canvas.arc(x, y, radius, 0, 2 * Math.PI, true);
+      canvas.fillStyle = color;
+      canvas.fill();
+
+      if (radius>=maxRadius)
+        change = -change;
+      if (radius<=minRadius)
+        change = -change;
+
+      radius = radius + change
+
+      canvas.beginPath();
+      canvas.arc(x, y, radius, 0, 2 * Math.PI, true);
+      canvas.fillStyle = color;
+      canvas.fill();
+      canvas.arc(x, y, radius, 0, 2 * Math.PI, true); //modified
+      canvas.strokeStyle = "white";
+      canvas.lineWidth = 3;
+      canvas.stroke();
+    }
+
+    function wrongPoint(x, y, canvas){
+      canvas.beginPath();
+      canvas.arc(x, y, 5, 0, 2 * Math.PI, true);
+      canvas.fillStyle = color;
+      canvas.fill();
+      canvas.arc(x, y, 6, 0, 2 * Math.PI, true);
+      canvas.strokeStyle = "white";
+      canvas.lineWidth = 1;
+      canvas.stroke();
+    }
+
+    function line(x0,y0,x1,y1, strSize, color, canvas){
+        canvas.beginPath();
+        canvas.moveTo(x0, y0);
+        canvas.lineTo(x1, y1);
+        canvas.lineWidth = strSize;
+        canvas.strokeStyle = color;
+        canvas.stroke();
+
+    }
+
+    function drawFace(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'nose') {
+             if (element.score>=confidence){
+                nosex = element.position.x;
+                nosey = element.position.y;
+             }
+             else
+                throw "noConfidence";
+            }
+            if (element.part == 'leftEye') {
+             if (element.score>=confidence){
+                leyex = element.position.x;
+                leyey = element.position.y;
+             }
+             else
+                throw "noConfidence";
+            }
+            if (element.part == 'rightEye') {
+             if (element.score>=confidence){
+                reyex = element.position.x;
+                reyey = element.position.y;
+             }
+             else
+                throw "noConfidence";
+            }
+        });
+
+        ctx.beginPath();
+        ctx.moveTo(reyex, reyey);
+        ctx.lineTo(leyex, leyey);
+        ctx.lineTo(nosex, nosey);
+        ctx.lineTo(reyex, reyey);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = colorHead;
+        ctx.stroke();
+
+        complexPoint(reyex,reyey,colorHead,ctx,radius)
+        complexPoint(leyex,leyey,colorHead,ctx,radius)
+        complexPoint(nosex, nosey,colorHead,ctx,radius)
+    }
+
+    function drawShoulder(keypoints, confidence){
+        keypoints.forEach(element => {
+
+            if (element.part == 'leftShoulder') {
+             if (element.score>=confidence){
+                lshouldx = element.position.x;
+                lshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence Shoulder";
+            }
+            if (element.part == 'rightShoulder') {
+             if (element.score>=confidence){
+                rshouldx = element.position.x;
+                rshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence Shoulder";
+            }
+        });
+        line (lshouldx, lshouldy, rshouldx, rshouldy, 5, colorShoulder,ctx)
+        complexPoint(lshouldx,lshouldy,colorShoulder,ctx,radius)
+        complexPoint(rshouldx,rshouldy,colorShoulder,ctx,radius)
+
+    }
+
+    function drawArmLeft(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'leftShoulder') {
+             if (element.score>=confidence){
+                lshouldx = element.position.x;
+                lshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence arm left";
+            }
+            if (element.part == 'leftElbow') {
+             if (element.score>=confidence){
+                lElbowx = element.position.x;
+                lElbowy = element.position.y;
+             }
+             else
+                throw "noConfidence arm left";
+            }
+            if (element.part == 'leftWrist') {
+             if (element.score>=confidence){
+                lWristx = element.position.x;
+                lWristy = element.position.y;
+             }
+             else
+                throw "noConfidence arm left";
+            }
+        });
+        line (lshouldx, lshouldy, lElbowx, lElbowy, 5, colorArm,ctx)
+        line (lElbowx, lElbowy, lWristx, lWristy, 5, colorArm,ctx)
+        complexPoint(lElbowx,lElbowy,colorArm,ctx,radius)
+        complexPoint(lWristx,lWristy,colorArm,ctx,radius)
+    }
+
+    function drawArmRight(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'rightShoulder') {
+             if (element.score>=confidence){
+                rshouldx = element.position.x;
+                rshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence arm right";
+            }
+            if (element.part == 'rightElbow') {
+             if (element.score>=confidence){
+                rElbowx = element.position.x;
+                rElbowy = element.position.y;
+             }
+             else
+                throw "noConfidence arm right";
+            }
+            if (element.part == 'rightWrist') {
+             if (element.score>=confidence){
+                rWristx = element.position.x;
+                rWristy = element.position.y;
+             }
+             else
+                throw "noConfidence arm right";
+            }
+        });
+        line (rshouldx, rshouldy, rElbowx, rElbowy, 5, colorArm,ctx)
+        line (rElbowx, rElbowy, rWristx, rWristy, 5, colorArm,ctx)
+        complexPoint(rElbowx,rElbowy,colorArm,ctx,radius)
+        complexPoint(rWristx,rWristy,colorArm,ctx,radius)
+    }
+
+    function drawHip(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'leftHip') {
+             if (element.score>=confidence){
+                lHipx = element.position.x;
+                lHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'rightHip') {
+             if (element.score>=confidence){
+                rHipx = element.position.x;
+                rHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+        });
+        line (lHipx, lHipy, rHipx, rHipy, 5, colorBody,ctx)
+        complexPoint(lHipx,lHipy,colorBody,ctx,radius)
+        complexPoint(rHipx,rHipy,colorBody,ctx,radius)
+    }
+
+    function drawLeftLeg(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'leftHip') {
+             if (element.score>=confidence){
+                lHipx = element.position.x;
+                lHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'leftKnee') {
+             if (element.score>=confidence){
+                lKneex = element.position.x;
+                lKneey = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'leftAnkle') {
+             if (element.score>=confidence){
+                lAnklex = element.position.x;
+                lAnkley = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+        });
+        line (lHipx, lHipy, lKneex, lKneey, 5, colorLeg,ctx)
+        line (lKneex, lKneey, lAnklex, lAnkley, 5, colorLeg,ctx)
+        complexPoint(lKneex,lKneey,colorLeg,ctx,radius)
+        complexPoint(lAnklex,lAnkley,colorLeg,ctx,radius)
+    }
+
+    function drawRightLeg(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'rightHip') {
+             if (element.score>=confidence){
+                rHipx = element.position.x;
+                rHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'rightKnee') {
+             if (element.score>=confidence){
+                rKneex = element.position.x;
+                rKneey = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'rightAnkle') {
+             if (element.score>=confidence){
+                rAnklex = element.position.x;
+                rAnkley = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+        });
+        line (rHipx, rHipy, rKneex, rKneey, 5, colorLeg,ctx)
+        line (rKneex, rKneey, rAnklex, rAnkley, 5, colorLeg,ctx)
+        complexPoint(rKneex,rKneey,colorLeg,ctx,radius)
+        complexPoint(rAnklex,rAnkley,colorLeg,ctx,radius)
+    }
+
+    function drawBody(keypoints, confidence){
+        keypoints.forEach(element => {
+            if (element.part == 'rightHip') {
+             if (element.score>=confidence){
+                rHipx = element.position.x;
+                rHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'leftHip') {
+             if (element.score>=confidence){
+                lHipx = element.position.x;
+                lHipy = element.position.y;
+             }
+             else
+                throw "noConfidence Hip";
+            }
+            if (element.part == 'rightShoulder') {
+             if (element.score>=confidence){
+                rshouldx = element.position.x;
+                rshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence arm right";
+            }
+            if (element.part == 'leftShoulder') {
+             if (element.score>=confidence){
+                lshouldx = element.position.x;
+                lshouldy = element.position.y;
+             }
+             else
+                throw "noConfidence Shoulder";
+            }
+        });
+        line ((rHipx+lHipx)/2, (rHipy+lHipy)/2, (rshouldx+lshouldx)/2, (rshouldy+lshouldy)/2, 5, colorBody,ctx)
+        complexPoint((rHipx+lHipx)/2,(rHipy+lHipy)/2,colorBody,ctx,radius)
+        complexPoint((rshouldx+lshouldx)/2,(rshouldy+lshouldy)/2,colorBody,ctx,radius)
+    }
+
+    function drawPose(pose) {
+        if (webcam.canvas) {
+            ctx.drawImage(webcam.canvas, 0, 0);
+            // draw the keypoints and skeleton
+            if (pose) {
+                const minPartCofidence = 0.75;
+
+                //DRAW SINGLE SEGMENT
+                try{
+                   drawFace(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawShoulder(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawArmLeft(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawArmRight(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawHip(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawLeftLeg(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawRightLeg(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+                try{
+                   drawBody(pose.keypoints, minPartCofidence);
+                }catch(e){
+                    console.log(e)
+                }
+
+                //DRAW ALL POINTS
+                /*
+                pose.keypoints.forEach(element => {
+                simplePoint(element.position.x,element.position.y,ctx)
+                });
+                */
+
+                //tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                //tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            }
+        }
+    }
+</script>
+</body>
