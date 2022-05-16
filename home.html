@@ -1,7 +1,7 @@
 <body onload="init()">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <div>TEST SMART COACH</div>
-<button type="button" /*onclick="selectCamera()"*/ onclick='write()'>ChangeCamera</button>
+<button type="button" onclick='write()'>ChangeCamera</button>
 <div><canvas id="canvas"></canvas></div>
 <div id="label-container"></div>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -96,7 +96,7 @@
         drawPose(pose);
     }
     async function write(){
-        console.log(A);
+        console.log("Hello World");
     }
     
     async function selectCamera(){
